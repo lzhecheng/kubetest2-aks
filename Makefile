@@ -20,8 +20,7 @@ OUT_DIR=$(REPO_ROOT)/bin
 COMMIT?=$(shell git describe --tags --always --dirty 2>/dev/null)
 INSTALL?=install
 # make install will place binaries here
-# the default path attempts to mimic go install
-INSTALL_DIR?=$(shell $(REPO_ROOT)/hack/build/goinstalldir.sh)
+INSTALL_DIR?=$(GOPATH)/bin
 # the output binary name, overridden when cross compiling
 BINARY_NAME?=kubetest2-aks
 BINARY_PATH?=.
@@ -31,7 +30,7 @@ export DOCKER
 # ========================= Setup Go With Gimme ================================
 # go version to use for build etc.
 # setup correct go version with gimme
-PATH:=$(shell . hack/build/setup-go.sh && echo "$${PATH}")
+# PATH:=$(shell . hack/build/setup-go.sh && echo "$${PATH}")
 # go1.9+ can autodetect GOROOT, but if some other tool sets it ...
 GOROOT:=
 # enable modules
@@ -59,7 +58,7 @@ BUILD_FLAGS?=-trimpath -ldflags="-buildid="
 install-deployer-aks:
 	BINARY_PATH=.
 	BINARY_NAME=kubetest2-aks
-	BUILD_FLAGS=-trimpath -ldflags="-buildid= -X=github.com/lzhecheng/kubetest2-aks/deployer.GitTag=$(COMMIT)"
+	BUILD_FLAGS='-trimpath -ldflags="-buildid= -X=github.com/lzhecheng/kubetest2-aks/deployer.GitTag=$(COMMIT)"'
 	go build -v $(BUILD_FLAGS) -o $(OUT_DIR)/$(BINARY_NAME) $(BINARY_PATH)
 	$(INSTALL) -d $(INSTALL_DIR)
 	$(INSTALL) $(OUT_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
