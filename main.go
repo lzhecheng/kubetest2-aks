@@ -19,7 +19,7 @@ package main
 import (
 	"sigs.k8s.io/kubetest2/pkg/app"
 
-	"github.com/lzhecheng/kubetest-aks/deployer"
+	"github.com/lzhecheng/kubetest2-aks/deployer"
 )
 
 func main() {

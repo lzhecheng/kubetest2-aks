@@ -15,3 +15,28 @@ limitations under the License.
 */
 
 package deployer
+
+import (
+	"os"
+
+	"sigs.k8s.io/kubetest2/pkg/process"
+)
+
+func (d *deployer) Build() error {
+	args := []string{
+		"build",
+	}
+	// if d.BuildType != "" {
+	// 	args = append(args, "--type", d.BuildType)
+	// }
+	// if d.KubeRoot != "" {
+	// 	args = append(args, "--kube-root", d.KubeRoot)
+	// }
+
+	// we want to see the output so use process.ExecJUnit
+	if err := process.ExecJUnit("aks", args, os.Environ()); err != nil {
+		return err
+	}
+	// build.StoreCommonBinaries(d.KubeRoot, d.commonOptions.RunDir())
+	return nil
+}
