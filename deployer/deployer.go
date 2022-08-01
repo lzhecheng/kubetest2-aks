@@ -19,19 +19,13 @@ package deployer
 import (
 	"context"
 	"flag"
-	"log"
 	"os"
 	"path/filepath"
 
-	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/octago/sflags/gen/gpflag"
 	"github.com/spf13/pflag"
 	"k8s.io/klog"
 	"sigs.k8s.io/kubetest2/pkg/types"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 )
 
 // Name is the name of the deployer
@@ -43,6 +37,11 @@ var (
 	subscriptionId    = os.Getenv("AZURE_SUBSCRIPTION_ID")
 	location          = os.Getenv("AZURE_LOCATION")
 	resourceGroupName = os.Getenv("AZURE_RESOURCEGROUP")
+	clientID          = os.Getenv("AZURE_CLIENT_ID")
+	clientSecret      = os.Getenv("AZURE_CLIENT_SECRET")
+	ccmImage          = os.Getenv("CCM_IMAGE")
+	cnmImage          = os.Getenv("CNM_IMAGE")
+	clusterName       = "aks-cluster"
 	ctx               = context.Background()
 )
 
@@ -68,54 +67,6 @@ func New(opts types.Options) (types.Deployer, *pflag.FlagSet) {
 	}
 	// register flags and return
 	return d, bindFlags(d)
-}
-
-// Define the function to create a resource group.
-func (d *deployer) createResourceGroup(subscriptionId string, credential azcore.TokenCredential) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error) {
-	rgClient, _ := armresources.NewResourceGroupsClient(subscriptionId, credential, nil)
-
-	param := armresources.ResourceGroup{
-		Location: to.StringPtr(location),
-	}
-
-	return rgClient.CreateOrUpdate(ctx, resourceGroupName, param, nil)
-}
-
-func (d *deployer) Up() error {
-	// Create a credentials object.
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		log.Fatalf("Authentication failure: %+v", err)
-	}
-
-	resourceGroup, err := d.createResourceGroup(subscriptionId, cred)
-	if err != nil {
-		log.Fatalf("Creation of resource group failed: %+v", err)
-	}
-
-	log.Printf("Resource group %s created", *resourceGroup.ResourceGroup.ID)
-	return nil
-}
-
-func (d *deployer) deleteResourceGroup(subscriptionId string, credential azcore.TokenCredential) error {
-	rgClient, _ := armresources.NewResourceGroupsClient(subscriptionId, credential, nil)
-
-	poller, err := rgClient.BeginDelete(ctx, resourceGroupName, nil)
-	if err != nil {
-		return err
-	}
-	if _, err := poller.PollUntilDone(ctx, nil); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (d *deployer) Down() error {
-	return nil
-}
-
-func (d *deployer) IsUp() (up bool, err error) {
-	return false, nil
 }
 
 func (d *deployer) DumpClusterLogs() error {
