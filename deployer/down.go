@@ -17,6 +17,7 @@ limitations under the License.
 package deployer
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -29,10 +30,10 @@ func (d *deployer) deleteResourceGroup(subscriptionId string, credential azcore.
 
 	poller, err := rgClient.BeginDelete(ctx, resourceGroupName, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to begin deleting resource group %q: %v", resourceGroupName, err)
 	}
 	if _, err := poller.PollUntilDone(ctx, nil); err != nil {
-		return err
+		return fmt.Errorf("failed to poll until resource group %q deletion is done: %v", resourceGroupName, err)
 	}
 	return nil
 }

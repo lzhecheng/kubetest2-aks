@@ -39,8 +39,6 @@ var (
 	resourceGroupName = os.Getenv("AZURE_RESOURCEGROUP")
 	clientID          = os.Getenv("AZURE_CLIENT_ID")
 	clientSecret      = os.Getenv("AZURE_CLIENT_SECRET")
-	ccmImage          = os.Getenv("CCM_IMAGE")
-	cnmImage          = os.Getenv("CNM_IMAGE")
 	clusterName       = "aks-cluster"
 	ctx               = context.Background()
 )
