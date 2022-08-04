@@ -1,10 +1,10 @@
 {
-  "id": "AKS_CLUSTER_ID",
-  "name": "CLUSTER_NAME",
-  "location": "AZURE_LOCATION",
+  "id": "{AKS_CLUSTER_ID}",
+  "name": "{CLUSTER_NAME}",
+  "location": "{AZURE_LOCATION}",
   "type": "Microsoft.ContainerService/ManagedClusters",
   "properties": {
-    "kubernetesVersion": "KUBERNETES_VERSION",
+    "kubernetesVersion": "1.24.0",
     "dnsPrefix": "aks",
     "masterProfile": {
       "count": 3,
@@ -23,10 +23,10 @@
       }
     ],
     "servicePrincipalProfile": {
-        "clientId": "AZURE_CLIENT_ID",
-        "secret": "AZURE_CLIENT_SECRET"
+        "clientId": "{AZURE_CLIENT_ID}",
+        "secret": "{AZURE_CLIENT_SECRET}"
     },
-    "encodedCustomConfiguration": "CUSTOM_CONFIG",
+    "encodedCustomConfiguration": "{CUSTOM_CONFIG}",
     "networkProfile": {
       "loadBalancerSku": "Basic"
     }

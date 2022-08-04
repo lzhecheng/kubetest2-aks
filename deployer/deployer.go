@@ -34,25 +34,25 @@ const Name = "aks"
 var (
 	GitTag string
 
-	subscriptionId    = os.Getenv("AZURE_SUBSCRIPTION_ID")
-	location          = os.Getenv("AZURE_LOCATION")
-	resourceGroupName = os.Getenv("AZURE_RESOURCEGROUP")
-	clientID          = os.Getenv("AZURE_CLIENT_ID")
-	clientSecret      = os.Getenv("AZURE_CLIENT_SECRET")
-	clusterName       = "aks-cluster"
-	ctx               = context.Background()
+	subscriptionId = os.Getenv("AZURE_SUBSCRIPTION_ID")
+	clientID       = os.Getenv("AZURE_CLIENT_ID")
+	clientSecret   = os.Getenv("AZURE_CLIENT_SECRET")
+	imageRegistry  = os.Getenv("IMAGE_REGISTRY")
+	ctx            = context.Background()
 )
 
 type deployer struct {
 	// generic parts
 	commonOptions types.Options
-	// aks specific details
-	ClusterName string `flag:"cluster-name" desc:"the aks cluster --name"`
-	// BuildType      string `desc:"--type for aks build node-image"`
-	ConfigPath     string `flag:"config" desc:"--config for aks create cluster"`
-	KubeconfigPath string `flag:"kubeconfig" desc:"--kubeconfig flag for aks create cluster"`
-	// KubeRoot       string `desc:"--kube-root for aks build node-image"`
 
+	*BuildOptions
+	*UpOptions
+	// aks specific details
+	KubeconfigPath    string `flag:"kubeconfig" desc:"--kubeconfig flag for aks create cluster"`
+	ResourceGroupName string `flag:"rgName" desc:"--rgName flag for resource group name"`
+
+	// BuildType      string `desc:"--type for aks build node-image"`
+	// KubeRoot       string `desc:"--kube-root for aks build node-image"`
 	// logsDir string
 }
 

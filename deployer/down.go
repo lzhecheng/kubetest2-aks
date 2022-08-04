@@ -28,12 +28,12 @@ import (
 func (d *deployer) deleteResourceGroup(subscriptionId string, credential azcore.TokenCredential) error {
 	rgClient, _ := armresources.NewResourceGroupsClient(subscriptionId, credential, nil)
 
-	poller, err := rgClient.BeginDelete(ctx, resourceGroupName, nil)
+	poller, err := rgClient.BeginDelete(ctx, d.ResourceGroupName, nil)
 	if err != nil {
-		return fmt.Errorf("failed to begin deleting resource group %q: %v", resourceGroupName, err)
+		return fmt.Errorf("failed to begin deleting resource group %q: %v", d.ResourceGroupName, err)
 	}
 	if _, err := poller.PollUntilDone(ctx, nil); err != nil {
-		return fmt.Errorf("failed to poll until resource group %q deletion is done: %v", resourceGroupName, err)
+		return fmt.Errorf("failed to poll until resource group %q deletion is done: %v", d.ResourceGroupName, err)
 	}
 	return nil
 }
