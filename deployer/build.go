@@ -131,12 +131,5 @@ func (d *deployer) Build() error {
 		klog.Infof("cloud-provider-azure images with tag %q are ready", imageTag)
 	}
 
-	// args := []string{
-	// 	"build",
-	// }
-	// if err := process.ExecJUnit("aks", args, os.Environ()); err != nil {
-	// 	return err
-	// }
-	// build.StoreCommonBinaries(d.KubeRoot, d.commonOptions.RunDir())
 	return nil
 }

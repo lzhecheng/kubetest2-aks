@@ -25,8 +25,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 )
 
-func (d *deployer) deleteResourceGroup(subscriptionId string, credential azcore.TokenCredential) error {
-	rgClient, _ := armresources.NewResourceGroupsClient(subscriptionId, credential, nil)
+func (d *deployer) deleteResourceGroup(subscriptionID string, credential azcore.TokenCredential) error {
+	rgClient, _ := armresources.NewResourceGroupsClient(subscriptionID, credential, nil)
 
 	poller, err := rgClient.BeginDelete(ctx, d.ResourceGroupName, nil)
 	if err != nil {
@@ -45,7 +45,7 @@ func (d *deployer) Down() error {
 		log.Fatalf("Authentication failure: %+v", err)
 	}
 
-	err = d.deleteResourceGroup(subscriptionId, cred)
+	err = d.deleteResourceGroup(subscriptionID, cred)
 	if err != nil {
 		log.Fatalf("Creation of resource group failed: %+v", err)
 	}

@@ -17,11 +17,12 @@ limitations under the License.
 package deployer
 
 import (
-	"crypto/tls"
+	"bytes"
+	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -31,9 +32,17 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	armcontainerservicev2 "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/go-autorest/autorest"
+	"github.com/Azure/go-autorest/autorest/adal"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/to"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
+
+	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/armclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/containerserviceclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 
 	"sigs.k8s.io/kubetest2/pkg/exec"
 )
@@ -46,7 +55,7 @@ var (
 type UpOptions struct {
 	ClusterName      string `flag:"clusterName" desc:"--clusterName flag for aks cluster name"`
 	Location         string `flag:"location" desc:"--location flag for resource group and cluster location"`
-	CCMImageTag      string `flag:"ccmImageTag" dsec:"--ccmImageTag flag for CCM image tag"`
+	CCMImageTag      string `flag:"ccmImageTag" desc:"--ccmImageTag flag for CCM image tag"`
 	ConfigPath       string `flag:"config" desc:"--config flag for AKS cluster"`
 	CustomConfigPath string `flag:"customConfig" desc:"--customConfig flag for custom configuration"`
 }
@@ -57,8 +66,8 @@ func runCmd(cmd exec.Cmd) error {
 }
 
 // Define the function to create a resource group.
-func (d *deployer) createResourceGroup(subscriptionId string, credential azcore.TokenCredential) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error) {
-	rgClient, _ := armresources.NewResourceGroupsClient(subscriptionId, credential, nil)
+func (d *deployer) createResourceGroup(subscriptionID string, credential azcore.TokenCredential) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error) {
+	rgClient, _ := armresources.NewResourceGroupsClient(subscriptionID, credential, nil)
 
 	param := armresources.ResourceGroup{
 		Location: to.StringPtr(d.Location),
@@ -67,66 +76,110 @@ func (d *deployer) createResourceGroup(subscriptionId string, credential azcore.
 	return rgClient.CreateOrUpdate(ctx, d.ResourceGroupName, param, nil)
 }
 
-// createAKSWithCustomConfig creates an AKS cluster with custom configuration.
-func (d *deployer) createAKSWithCustomConfig(token string, imageTag string) error {
-	clusterID := fmt.Sprintf("/subscriptions/%s/resourcegroups/%s/providers/Microsoft.ContainerService/managedClusters/%s", subscriptionId, d.ResourceGroupName, d.ClusterName)
-	url := fmt.Sprintf("https://management.azure.com%s?api-version=%s", clusterID, apiVersion)
-
+// prepareClusterConfig generates cluster config.
+func (d *deployer) prepareClusterConfig(imageTag string, clusterID string) (string, error) {
 	configFile, err := ioutil.ReadFile(d.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to read cluster config file at %q: %v", d.ConfigPath, err)
+		return "", fmt.Errorf("failed to read cluster config file at %q: %v", d.ConfigPath, err)
 	}
 	clusterConfig := string(configFile)
-	replacing := map[string]string{
+	clusterConfigMap := map[string]string{
 		"{AKS_CLUSTER_ID}":      clusterID,
 		"{CLUSTER_NAME}":        d.ClusterName,
 		"{AZURE_LOCATION}":      d.Location,
 		"{AZURE_CLIENT_ID}":     clientID,
 		"{AZURE_CLIENT_SECRET}": clientSecret,
 	}
-	for k, v := range replacing {
+	for k, v := range clusterConfigMap {
 		clusterConfig = strings.ReplaceAll(clusterConfig, k, v)
 	}
 
-	customConfigFile, err := ioutil.ReadFile(d.CustomConfigPath)
+	customConfig, err := ioutil.ReadFile(d.CustomConfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to read custom config file at %q: %v", d.CustomConfigPath, err)
+		return "", fmt.Errorf("failed to read custom config file at %q: %v", d.CustomConfigPath, err)
 	}
 
-	imageMap := map[string]string{
+	cloudProviderImageMap := map[string]string{
 		"{CUSTOM_CCM_IMAGE}": fmt.Sprintf("%s/azure-cloud-controller-manager:%s", imageRegistry, imageTag),
 		"{CUSTOM_CNM_IMAGE}": fmt.Sprintf("%s/azure-cloud-node-manager:%s-linux-amd64", imageRegistry, imageTag),
 	}
-	customConfig := string(customConfigFile)
-	for k, v := range imageMap {
-		customConfig = strings.ReplaceAll(customConfig, k, v)
+	for k, v := range cloudProviderImageMap {
+		customConfig = bytes.ReplaceAll(customConfig, []byte(k), []byte(v))
 	}
 
-	// TODO: Custom configuration feature is used in limit. If this feature can be widely used,
+	// TODO: Custom configuration feature is used in limit. If this feature can be widely available,
 	// this kubetest-aks can be more publicly used.
-	encodedCustomConfig := base64.StdEncoding.EncodeToString([]byte(customConfig))
-	clusterConfig = strings.ReplaceAll(clusterConfig, "CUSTOM_CONFIG", encodedCustomConfig)
+	encodedCustomConfig := base64.StdEncoding.EncodeToString(customConfig)
+	clusterConfig = strings.ReplaceAll(clusterConfig, "{CUSTOM_CONFIG}", encodedCustomConfig)
 
-	r, err := http.NewRequest("PUT", url, strings.NewReader(clusterConfig))
+	return clusterConfig, nil
+}
+
+func (d *deployer) getAzureClientConfig() (*azclients.ClientConfig, error) {
+	oauthConfig, err := adal.NewOAuthConfigWithAPIVersion(azure.PublicCloud.ActiveDirectoryEndpoint, tenantID, &apiVersion)
 	if err != nil {
-		return fmt.Errorf("failed to generate new PUT request: %v", err)
+		return nil, fmt.Errorf("failed to new oath config with api version: %v", err)
 	}
-
-	// request headers
-	r.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token))
-	r.Header.Add("Content-Type", "application/json")
-	r.Header.Add("AKSHTTPCustomFeatures", "Microsoft.ContainerService/EnableCloudControllerManager")
-
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-
-	resp, err := client.Do(r)
+	spToken, err := adal.NewServicePrincipalToken(*oauthConfig, clientID, clientSecret, azure.PublicCloud.ServiceManagementEndpoint)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %v", err)
+		return nil, fmt.Errorf("failed to new service principal token: %v", err)
 	}
-	defer resp.Body.Close()
+
+	authorizer := autorest.NewBearerAuthorizer(spToken)
+	baseURL := azure.PublicCloud.ResourceManagerEndpoint
+	azClientConfig := azclients.ClientConfig{
+		CloudName:               azure.PublicCloud.Name,
+		Location:                d.Location,
+		SubscriptionID:          subscriptionID,
+		ResourceManagerEndpoint: baseURL,
+		Authorizer:              authorizer,
+		Backoff:                 &retry.Backoff{Steps: 1},
+	}
+	return &azClientConfig, nil
+}
+
+func (d *deployer) newArmClient() (*armclient.Client, error) {
+	config, err := d.getAzureClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Azure client config: %v", err)
+	}
+
+	return armclient.New(config.Authorizer, *config, config.ResourceManagerEndpoint, apiVersion), nil
+}
+
+// createAKSWithCustomConfig creates an AKS cluster with custom configuration.
+func (d *deployer) createAKSWithCustomConfig(token string, imageTag string) error {
+	klog.Infof("Creating the AKS cluster with custom config")
+	clusterID := fmt.Sprintf("/subscriptions/%s/resourcegroups/%s/providers/Microsoft.ContainerService/managedClusters/%s", subscriptionID, d.ResourceGroupName, d.ClusterName)
+
+	clusterConfig, err := d.prepareClusterConfig(imageTag, clusterID)
+	if err != nil {
+		return fmt.Errorf("failed to prepare cluster config: %v", err)
+	}
+
+	decorators := []autorest.PrepareDecorator{
+		autorest.WithHeader("Authorization", fmt.Sprintf("Bearer %s", token)),
+		autorest.WithHeader("Content-Type", "application/json"),
+		autorest.WithHeader("AKSHTTPCustomFeatures", "Microsoft.ContainerService/EnableCloudControllerManager"),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var unmarshalledClusterConfig interface{}
+	if err := json.Unmarshal([]byte(clusterConfig), &unmarshalledClusterConfig); err != nil {
+		return fmt.Errorf("failed to unmarshal cluster config: %v", err)
+	}
+
+	armClient, err := d.newArmClient()
+	if err != nil {
+		return fmt.Errorf("failed to new arm client: %v", err)
+	}
+	resp, rerr := armClient.PutResource(ctx, clusterID, unmarshalledClusterConfig, decorators...)
+	defer armClient.CloseResponse(ctx, resp)
+	if rerr != nil {
+		return fmt.Errorf("failed to put resource: %v", rerr.Error())
+	}
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("failed to create the AKS cluster: output %v\nerr %v", resp, err)
@@ -137,9 +190,10 @@ func (d *deployer) createAKSWithCustomConfig(token string, imageTag string) erro
 
 // getAKSKubeconfig gets kubeconfig of the AKS cluster and writes it to specific path.
 func (d *deployer) getAKSKubeconfig(cred *azidentity.DefaultAzureCredential) error {
-	client, err := armcontainerservicev2.NewManagedClustersClient(subscriptionId, cred, nil)
+	klog.Infof("Retrieving AKS cluster's kubeconfig")
+	client, err := armcontainerservicev2.NewManagedClustersClient(subscriptionID, cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to new managed cluster client with sub ID %q: %v", subscriptionId, err)
+		return fmt.Errorf("failed to new managed cluster client with sub ID %q: %v", subscriptionID, err)
 	}
 
 	var resp armcontainerservicev2.ManagedClustersClientListClusterUserCredentialsResponse
@@ -176,15 +230,41 @@ func (d *deployer) getAKSKubeconfig(cred *azidentity.DefaultAzureCredential) err
 	return nil
 }
 
+func (d *deployer) verifyUpFlags() error {
+	if d.ResourceGroupName == "" {
+		return fmt.Errorf("resource group name is empty")
+	}
+	if d.Location == "" {
+		return fmt.Errorf("location is empty")
+	}
+	if d.ClusterName == "" {
+		d.ClusterName = "aks-cluster"
+	}
+	if d.ConfigPath == "" {
+		return fmt.Errorf("cluster config path is empty")
+	}
+	if d.CustomConfigPath == "" {
+		return fmt.Errorf("custom config path is empty")
+	}
+	if d.CCMImageTag == "" {
+		return fmt.Errorf("ccm image tag is empty")
+	}
+	return nil
+}
+
 func (d *deployer) Up() error {
-	// Create a credentials object.
+	if err := d.verifyUpFlags(); err != nil {
+		return fmt.Errorf("up flags are invalid: %v", err)
+	}
+
+	// Create a credential object.
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		klog.Fatalf("Authentication failure: %+v", err)
 	}
 
 	// Create the resource group
-	resourceGroup, err := d.createResourceGroup(subscriptionId, cred)
+	resourceGroup, err := d.createResourceGroup(subscriptionID, cred)
 	if err != nil {
 		return fmt.Errorf("failed to create the resource group: %v", err)
 	}
@@ -208,5 +288,19 @@ func (d *deployer) Up() error {
 }
 
 func (d *deployer) IsUp() (up bool, err error) {
-	return false, nil
+	config, err := d.getAzureClientConfig()
+	if err != nil {
+		return false, fmt.Errorf("failed to get client config: %v", err)
+	}
+	client := containerserviceclient.New(config)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	managedCluster, rerr := client.Get(ctx, d.ResourceGroupName, d.ClusterName)
+	if rerr != nil {
+		return false, fmt.Errorf("failed to get managed cluster %q in resource group %q: %v", d.ClusterName, d.ResourceGroupName, rerr.Error())
+	}
+
+	return managedCluster.ProvisioningState != nil && *managedCluster.ProvisioningState == "Succeeded", nil
 }
