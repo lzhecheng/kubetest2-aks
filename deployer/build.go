@@ -29,9 +29,10 @@ import (
 
 var (
 	customConfigComponents = map[string]string{
-		"cloud-provider-azure": "https://github.com/kubernetes-sigs/cloud-provider-azure.git",
-		"azure-file":           "https://github.com/kubernetes-sigs/azurefile-csi-driver.git",
-		"azure-disk":           "https://github.com/kubernetes-sigs/azuredisk-csi-driver.git",
+		"ccm":        "https://github.com/kubernetes-sigs/cloud-provider-azure.git",
+		"cnm":        "https://github.com/kubernetes-sigs/cloud-provider-azure.git",
+		"azure-file": "https://github.com/kubernetes-sigs/azurefile-csi-driver.git",
+		"azure-disk": "https://github.com/kubernetes-sigs/azuredisk-csi-driver.git",
 	}
 	gitClonePath string = "_git"
 )
@@ -55,14 +56,17 @@ func (d *deployer) verifyBuildFlags() error {
 	return nil
 }
 
-func (d *deployer) makeCCMImages(path string) (string, error) {
+func (d *deployer) makeCloudProviderImages(path string) (string, error) {
 	// Show commit
 	if err := runCmd(exec.Command("git", "-C", path, "show", "--stat")); err != nil {
 		return "", fmt.Errorf("failed to show commit: %v", err)
 	}
 
 	// Make images
-	targets := []string{"build-ccm-image-amd64", "push-ccm-image-amd64", "build-node-image-linux-amd64", "push-node-image-linux-amd64"}
+	targets := []string{"build-ccm-image-amd64", "push-ccm-image-amd64"}
+	if d.Target == "cnm" {
+		targets = []string{"build-node-image-linux-amd64", "push-node-image-linux-amd64"}
+	}
 	for _, target := range targets {
 		if err := runCmd(exec.Command("make", "-C", path, target)); err != nil {
 			return "", fmt.Errorf("failed to make %s: %v", target, err)
@@ -77,17 +81,17 @@ func (d *deployer) makeCCMImages(path string) (string, error) {
 	return string(imageTag), nil
 }
 
-// makeCCMImagesByPath makes CCM and CNM images with repo path.
-func (d *deployer) makeCCMImagesByPath() (string, error) {
-	klog.Infof("Making CCM images with repo path")
+// makeCloudProviderImagesByPath makes CCM or CNM images with repo path.
+func (d *deployer) makeCloudProviderImagesByPath() (string, error) {
+	klog.Infof("Making Cloud provider images with repo path")
 
 	path := d.TargetPath
-	return d.makeCCMImages(path)
+	return d.makeCloudProviderImages(path)
 }
 
-// makeCCMImagesByTag makes CCM and CNM images with repo refs.
-func (d *deployer) makeCCMImagesByTag(url string) (string, error) {
-	klog.Infof("Making CCM images with refs")
+// makeCloudProviderImagesByTag makes CCM or CNM images with repo refs.
+func (d *deployer) makeCloudProviderImagesByTag(url string) (string, error) {
+	klog.Infof("Making Cloud provider images with refs")
 	ccmPath := fmt.Sprintf("%s/cloud-provider-azure", gitClonePath)
 
 	repo, err := git.PlainClone(ccmPath, false, &git.CloneOptions{
@@ -106,7 +110,7 @@ func (d *deployer) makeCCMImagesByTag(url string) (string, error) {
 		Branch: plumbing.ReferenceName(fmt.Sprintf("refs/tags/%s", d.TargetTag)),
 	})
 
-	return d.makeCCMImages(ccmPath)
+	return d.makeCloudProviderImages(ccmPath)
 }
 
 func (d *deployer) Build() error {
@@ -115,19 +119,18 @@ func (d *deployer) Build() error {
 		return fmt.Errorf("failed to verify build flags: %v", err)
 	}
 
-	if d.Target == "cloud-provider-azure" {
-		// Make CCM images
+	if d.Target == "ccm" || d.Target == "cnm" {
 		var imageTag string
 		if d.TargetPath != "" {
-			if imageTag, err = d.makeCCMImagesByPath(); err != nil {
-				return fmt.Errorf("failed to make CCM images with path %q: %v", d.TargetPath, err)
+			if imageTag, err = d.makeCloudProviderImagesByPath(); err != nil {
+				return fmt.Errorf("failed to make Cloud provider image with path %q: %v", d.TargetPath, err)
 			}
 		} else {
-			if imageTag, err = d.makeCCMImagesByTag(customConfigComponents[d.Target]); err != nil {
-				return fmt.Errorf("failed to make CCM images with tag %q: %v", d.TargetTag, err)
+			if imageTag, err = d.makeCloudProviderImagesByTag(customConfigComponents[d.Target]); err != nil {
+				return fmt.Errorf("failed to make Cloud provider image with tag %q: %v", d.TargetTag, err)
 			}
 		}
-		klog.Infof("cloud-provider-azure images with tag %q are ready", imageTag)
+		klog.Infof("cloud-provider-azure image with tag %q are ready", imageTag)
 	}
 
 	return nil
