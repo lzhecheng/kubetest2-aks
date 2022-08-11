@@ -45,11 +45,18 @@ SHELL:=env PATH=$(subst $(SPACE),\$(SPACE),$(PATH)) $(SHELL)
 # flags for reproducible go builds
 BUILD_FLAGS?=-trimpath -ldflags="-buildid="
 
-.PHONY: install-deployer
-install-deployer:
+.PHONY: deployer
+deployer:
 	BINARY_PATH=.
 	BINARY_NAME=kubetest2-aks
 	BUILD_FLAGS='-trimpath -ldflags="-buildid= -X=github.com/lzhecheng/kubetest2-aks/deployer.GitTag=$(COMMIT)"'
 	go build -v $(BUILD_FLAGS) -o $(OUT_DIR)/$(BINARY_NAME) $(BINARY_PATH)
+
+.PHONY: install
+install:
+	BINARY_NAME=kubetest2-aks
 	$(INSTALL) -d $(INSTALL_DIR)
 	$(INSTALL) $(OUT_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
+
+.PHONY: install-deployer
+install-deployer: deployer install
