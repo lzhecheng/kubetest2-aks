@@ -18,14 +18,15 @@ package deployer
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"k8s.io/klog"
 )
 
 func (d *deployer) deleteResourceGroup(subscriptionID string, credential azcore.TokenCredential) error {
+	klog.Infof("Deleting resource group %q", d.ResourceGroupName)
 	rgClient, _ := armresources.NewResourceGroupsClient(subscriptionID, credential, nil)
 
 	poller, err := rgClient.BeginDelete(ctx, d.ResourceGroupName, nil)
@@ -33,7 +34,7 @@ func (d *deployer) deleteResourceGroup(subscriptionID string, credential azcore.
 		return fmt.Errorf("failed to begin deleting resource group %q: %v", d.ResourceGroupName, err)
 	}
 	if _, err := poller.PollUntilDone(ctx, nil); err != nil {
-		return fmt.Errorf("failed to poll until resource group %q deletion is done: %v", d.ResourceGroupName, err)
+		return fmt.Errorf("failed to poll until deletion of resource group %q is done: %v", d.ResourceGroupName, err)
 	}
 	return nil
 }
@@ -42,14 +43,14 @@ func (d *deployer) Down() error {
 	// Create a credentials object.
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		log.Fatalf("Authentication failure: %+v", err)
+		klog.Fatalf("failed to authenticate: %v", err)
 	}
 
 	err = d.deleteResourceGroup(subscriptionID, cred)
 	if err != nil {
-		log.Fatalf("Creation of resource group failed: %+v", err)
+		klog.Fatalf("failed to delete resource group %q: %v", d.ResourceGroupName, err)
 	}
 
-	log.Printf("Resource group deleted")
+	klog.Infof("Resource group %q deleted", d.ResourceGroupName)
 	return nil
 }

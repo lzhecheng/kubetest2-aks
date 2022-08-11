@@ -4,7 +4,7 @@
   "location": "{AZURE_LOCATION}",
   "type": "Microsoft.ContainerService/ManagedClusters",
   "properties": {
-    "kubernetesVersion": "1.24.0",
+    "kubernetesVersion": "{KUBERNETES_VERSION}",
     "dnsPrefix": "aks",
     "masterProfile": {
       "count": 3,

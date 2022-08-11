@@ -58,6 +58,7 @@ type UpOptions struct {
 	CCMImageTag      string `flag:"ccmImageTag" desc:"--ccmImageTag flag for CCM image tag"`
 	ConfigPath       string `flag:"config" desc:"--config flag for AKS cluster"`
 	CustomConfigPath string `flag:"customConfig" desc:"--customConfig flag for custom configuration"`
+	K8sVersion       string `flag:"k8sVersion" desc:"--k8sVersion flag for cluster Kubernetes version"`
 }
 
 func runCmd(cmd exec.Cmd) error {
@@ -89,6 +90,7 @@ func (d *deployer) prepareClusterConfig(imageTag string, clusterID string) (stri
 		"{AZURE_LOCATION}":      d.Location,
 		"{AZURE_CLIENT_ID}":     clientID,
 		"{AZURE_CLIENT_SECRET}": clientSecret,
+		"{KUBERNETES_VERSION}":  d.K8sVersion,
 	}
 	for k, v := range clusterConfigMap {
 		clusterConfig = strings.ReplaceAll(clusterConfig, k, v)
@@ -248,6 +250,9 @@ func (d *deployer) verifyUpFlags() error {
 	}
 	if d.CCMImageTag == "" {
 		return fmt.Errorf("ccm image tag is empty")
+	}
+	if d.K8sVersion == "" {
+		return fmt.Errorf("k8s version is empty")
 	}
 	return nil
 }

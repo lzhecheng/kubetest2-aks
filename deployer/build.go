@@ -55,7 +55,6 @@ func (d *deployer) verifyBuildFlags() error {
 	return nil
 }
 
-// NOTICE: docker login is needed first.
 func (d *deployer) makeCCMImages(path string) (string, error) {
 	// Show commit
 	if err := runCmd(exec.Command("git", "-C", path, "show", "--stat")); err != nil {
@@ -80,7 +79,7 @@ func (d *deployer) makeCCMImages(path string) (string, error) {
 
 // makeCCMImagesByPath makes CCM and CNM images with repo path.
 func (d *deployer) makeCCMImagesByPath() (string, error) {
-	klog.Infof("Making CCM images with path")
+	klog.Infof("Making CCM images with repo path")
 
 	path := d.TargetPath
 	return d.makeCCMImages(path)
